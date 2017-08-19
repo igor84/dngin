@@ -1,0 +1,13 @@
+name "dngin"
+description "DNgin Game Engine"
+authors "Igor Stojkovic <stojkovic.igor@gmail.com>"
+copyright "Copyright © 2017, igors"
+license "MIT"
+
+targetType "executable"
+targetPath "build"
+
+configuration "default" {
+  lflags "/SUBSYSTEM:WINDOWS" platform="x86"
+  platforms "windows"
+}
