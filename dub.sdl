@@ -2,7 +2,7 @@ name "dngin"
 description "DNgin Game Engine"
 authors "Igor Stojkovic <stojkovic.igor@gmail.com>"
 copyright "Copyright © 2017, igors"
-license "MIT"
+license "Boost"
 
 targetType "executable"
 targetPath "build"
@@ -10,4 +10,5 @@ targetPath "build"
 configuration "default" {
   lflags "/SUBSYSTEM:WINDOWS" platform="x86"
   platforms "windows"
+  dependency "derelict-gl3" version="~>2.0.0-beta.3" 
 }

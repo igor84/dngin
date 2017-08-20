@@ -1,5 +1,5 @@
 /.vs
 /.dub
-/Win32
-/x64
+Win32
+x64
 /build

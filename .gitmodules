@@ -1,0 +1,6 @@
+[submodule "DerelictGL3"]
+	path = deps/DerelictGL3
+	url = https://github.com/DerelictOrg/DerelictGL3.git
+[submodule "DerelictUtil"]
+	path = deps/DerelictUtil
+	url = https://github.com/DerelictOrg/DerelictUtil.git
