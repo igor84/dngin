@@ -3,6 +3,7 @@ module winmain;
 version (Windows):
 
 pragma(lib, "gdi32");
+pragma(lib, "winmm");
 pragma(lib, "opengl32");
 
 import core.runtime;
@@ -76,17 +77,40 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
 
     if (!initOpenGL(hdc)) return 1;
 
+    timeBeginPeriod(1); // We change the Sleep time resolution to 1ms
+    glViewport(0, 0, WindowWidth, WindowHeight);
+
+    import core.time;
+    auto oldt = MonoTime.currTime;
     while (GlobalRunning) {
-        glViewport(0, 0, WindowWidth, WindowHeight);
-        glClearColor(1.0f, 0.0f, 1.0f, 0.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        SwapBuffers(hdc);
+        import std.random;
+        import core.thread;
+        enum targetDur = dur!"msecs"(40);
 
         MSG msg;
         while (PeekMessage(&msg, null, 0, 0, PM_REMOVE)) {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
+
+        glClearColor(1.0f, uniform(0f, 0.4f), 1.0f, 0.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        SwapBuffers(hdc);
+
+        auto newt = MonoTime.currTime;
+        auto fdur = newt - oldt;
+        auto i = 0;
+        if (fdur < targetDur) {
+            Thread.sleep(targetDur - fdur);
+            newt = MonoTime.currTime;
+            while (newt - oldt < targetDur) {
+                newt = MonoTime.currTime;
+                i++;
+            }
+        }
+        auto usecs = (newt - oldt).total!"usecs" / 1000f;
+        Log!"Frame Time: %sms, FPS: %s, empty loops: %s"(usecs, 1000f / usecs, i);
+        oldt = newt;
     }
 
     return 0;
@@ -145,6 +169,18 @@ bool initOpenGL(HDC hdc) {
 
     wglMakeCurrent(hdc, hrc);
     DerelictGL3.load();
-    DerelictGL3.reload();
+    //DerelictGL3.reload();
     return true;
+}
+
+import std.traits : isSomeString;
+void Log(alias message, Args...)(Args args) if (isSomeString!(typeof(message))) {
+    static if (args.length == 0) {
+        OutputDebugStringA(message ~ "\n");
+    } else {
+        import std.format;
+        char[400] buf;
+        auto res = buf[].sformat(message ~ "\n\0", args);
+        OutputDebugStringA(res.ptr);
+    }
 }
