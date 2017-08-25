@@ -8,6 +8,7 @@ pragma(lib, "opengl32");
 
 import core.runtime;
 import core.sys.windows.windows;
+import std.windows.syserror;
 import derelict.opengl;
 
 bool GlobalRunning = true;
@@ -24,6 +25,8 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
         Runtime.terminate();
     } catch (Throwable o) {
         // catch any uncaught exceptions
+        import std.utf;
+        MessageBox(null, o.toString().toUTFz!LPCTSTR, "Error", MB_OK | MB_ICONEXCLAMATION);
         result = 1;
     }
 
@@ -33,13 +36,16 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
     WNDCLASS WindowClass = {
         style: CS_HREDRAW | CS_VREDRAW | CS_OWNDC | CS_DBLCLKS,
-        lpfnWndProc: cast(WNDPROC)&Win32MainWindowCallback,
+        lpfnWndProc: cast(WNDPROC)&win32MainWindowCallback,
         hInstance: instance,
         hCursor: LoadCursor(null, IDC_ARROW),
         lpszClassName: "DNginWindowClass",
     };
 
-    if (!RegisterClass(&WindowClass)) return 1;
+    if (!RegisterClass(&WindowClass)) {
+        reportSysError("Failed to register window class");
+        return 1;
+    }
 
     enum DWORD dwExStyle = 0;
     enum DWORD dwStyle = WS_OVERLAPPEDWINDOW|WS_VISIBLE;
@@ -65,17 +71,19 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
                                  null                           // lpParam for optional additional data to store with the win
                                 );
     if (!Window){
-        //TODO: Error handling
+        reportSysError("Failed creating a window");
         return 1;
     }
 
     HDC hdc = GetDC(Window);
     if (!hdc) {
-        //TODO: Error handling
+        reportSysError("Failed fetching of window device context");
         return 1;
     }
 
     if (!initOpenGL(hdc)) return 1;
+
+    initRawInput(Window);
 
     timeBeginPeriod(1); // We change the Sleep time resolution to 1ms
     glViewport(0, 0, WindowWidth, WindowHeight);
@@ -89,8 +97,10 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
 
         MSG msg;
         while (PeekMessage(&msg, null, 0, 0, PM_REMOVE)) {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
+            if (!preprocessMessage(msg)) {
+                TranslateMessage(&msg);
+                DispatchMessage(&msg);
+            }
         }
 
         glClearColor(1.0f, uniform(0f, 0.4f), 1.0f, 0.0f);
@@ -109,7 +119,7 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
             }
         }
         auto usecs = (newt - oldt).total!"usecs" / 1000f;
-        Log!"Frame Time: %sms, FPS: %s, empty loops: %s"(usecs, 1000f / usecs, i);
+        //log!"Frame Time: %sms, FPS: %s, empty loops: %s"(usecs, 1000f / usecs, i);
         oldt = newt;
     }
 
@@ -117,12 +127,16 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
 }
 
 extern(Windows)
-LRESULT Win32MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam) {
+LRESULT win32MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam) {
     LRESULT Result;
 
     switch(Message) {
         case WM_QUIT, WM_CLOSE:
             GlobalRunning = false;
+            break;
+
+        case WM_CHAR:
+            wchar c = cast(wchar)WParam;
             break;
 
         default:
@@ -152,29 +166,156 @@ bool initOpenGL(HDC hdc) {
 
     int pixelFormat = ChoosePixelFormat(hdc, &pfd);
     if (!pixelFormat) {
-        //TODO: Error handling
+        reportSysError("Failed to find needed pixel format");
         return false;
     }
 
     if (!SetPixelFormat(hdc, pixelFormat, &pfd)) {
-        //TODO: Error handling
+        reportSysError("Failed to set needed pixel format");
         return false;
     }
 
     HGLRC hrc = wglCreateContext(hdc);
     if (!hrc) {
-        //TODO: Error handling
+        reportSysError("Failed to create OpenGL context");
         return false;
     }
 
     wglMakeCurrent(hdc, hrc);
     DerelictGL3.load();
-    //DerelictGL3.reload();
+    DerelictGL3.reload();
     return true;
 }
 
+bool preprocessMessage(const ref MSG msg) {
+    switch (msg.message) {
+        case WM_INPUT:
+            RAWINPUT raw;
+            UINT size = RAWINPUT.sizeof;
+            GetRawInputData(cast(HRAWINPUT)msg.lParam, RID_INPUT, &raw, &size, RAWINPUTHEADER.sizeof);
+
+            if (raw.header.dwType != RIM_TYPEKEYBOARD) return false;
+
+            // Each keyboard will have a different heandle
+            HANDLE hd = raw.header.hDevice;
+
+            auto rawKB = &raw.data.keyboard;
+            UINT virtualKey = rawKB.VKey;
+            UINT flags = rawKB.Flags;
+             
+            // discard "fake keys" which are part of an escaped sequence
+            if (virtualKey == 255) return false;
+
+            if (virtualKey == VK_SHIFT) {
+                // correct left-hand / right-hand SHIFT
+                virtualKey = MapVirtualKey(rawKB.MakeCode, MAPVK_VSC_TO_VK_EX);
+            }
+
+            immutable bool isE0 = (flags & RI_KEY_E0) != 0;
+            immutable bool isE1 = (flags & RI_KEY_E1) != 0;
+
+            import std.algorithm.comparison : max;
+            enum vkMappingCount = max(
+                                    VK_CONTROL, VK_MENU, VK_RETURN, VK_INSERT, VK_DELETE,
+                                    VK_HOME, VK_END, VK_PRIOR, VK_NEXT,
+                                    VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN, VK_CLEAR
+                                    ) + 1;
+            static immutable UINT[vkMappingCount] vkMappings = () {
+                UINT[vkMappingCount] res;
+                res[VK_CONTROL] = VK_RCONTROL;
+                res[VK_MENU] = VK_RMENU;
+                res[VK_RETURN] = VK_SEPARATOR;
+                res[VK_INSERT] = VK_NUMPAD0;
+                res[VK_DELETE] = VK_DECIMAL;
+                res[VK_HOME] = VK_NUMPAD7;
+                res[VK_END] = VK_NUMPAD1;
+                res[VK_PRIOR] = VK_NUMPAD9;
+                res[VK_NEXT] = VK_NUMPAD3;
+                res[VK_LEFT] = VK_NUMPAD4;
+                res[VK_RIGHT] = VK_NUMPAD6;
+                res[VK_UP] = VK_NUMPAD8;
+                res[VK_DOWN] = VK_NUMPAD2;
+                res[VK_CLEAR] = VK_NUMPAD5;
+                return res;
+            }();
+
+            if (isE0) {
+                if (virtualKey < vkMappings.length && vkMappings[virtualKey] > 0) {
+                    virtualKey = vkMappings[virtualKey];
+                }
+            } else if (virtualKey == VK_CONTROL) {
+                virtualKey = VK_LCONTROL;
+            } else if (virtualKey == VK_MENU) {
+                virtualKey = VK_LMENU;
+            }
+
+
+            // a key can either produce a "make" or "break" scancode. this is used to differentiate between down-presses and releases
+            // see http://www.win.tue.nl/~aeb/linux/kbd/scancodes-1.html
+            immutable bool isKeyUp = (flags & RI_KEY_BREAK) != 0;
+
+            // TODO: Do we need to give some raw inputs to OS or can we just eat them all?
+            // auto praw = &raw;
+            // DefRawInputProc(&praw, 1, RAWINPUTHEADER.sizeof);
+
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+bool initRawInput(HWND hWnd) {
+    // TODO: See about disabling win key in full screen: https://msdn.microsoft.com/en-us/library/windows/desktop/ee416808(v=vs.85).aspx
+    RAWINPUTDEVICE device;
+    device.usUsagePage = 0x01;
+    device.usUsage = 0x06;
+    // If we do not want to generate legacy messages such as WM_KEYDOWN set this to RIDEV_NOLEGACY.
+    // Note that in that case things like ALT+F4 will stop working
+    device.dwFlags = 0;
+    device.hwndTarget = hWnd;
+    if (!RegisterRawInputDevices(&device, 1, device.sizeof)) {
+        reportSysError("Failed to register raw keyboard input");
+        return false;
+    }
+
+    version(none) {
+        enum maxDevices = 100;
+        UINT nDevices = maxDevices;
+        RAWINPUTDEVICELIST[maxDevices] rawInputDeviceList;
+        UINT rawDeviceCount = GetRawInputDeviceList(rawInputDeviceList.ptr, &nDevices, RAWINPUTDEVICELIST.sizeof);
+        if (rawDeviceCount == cast(UINT)-1) {
+            // Failed fatching the list
+            return false;
+        }
+        foreach(i; 0..rawDeviceCount) {
+            RAWINPUTDEVICELIST r = RawInputDeviceList[i];
+            RID_DEVICE_INFO buf;
+            UINT size = buf.sizeof;
+            UINT res = GetRawInputDeviceInfoA(r.hDevice, RIDI_DEVICEINFO, &buf, &size);
+            if (res == cast(UINT)-1) continue;
+            if (buf.dwType == RIM_TYPEKEYBOARD) {
+                RID_DEVICE_INFO_KEYBOARD keyboard = buf.keyboard;
+                if (keyboard.dwNumberOfKeysTotal < 15) {
+                    // Some very specific "gaming keyboards" can have only the necessary few keys
+                    // but if it is under 15 we consider this invalid keyboard
+                    // TODO: Should we use this list so the API can return a list of available keyboards?
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+void reportSysError(string error) {
+    import std.utf;
+    string msg = error ~ ": " ~ sysErrorString(GetLastError());
+    MessageBox(null, msg.toUTFz!LPCTSTR, "Error", MB_OK | MB_ICONEXCLAMATION);
+}
+
 import std.traits : isSomeString;
-void Log(alias message, Args...)(Args args) if (isSomeString!(typeof(message))) {
+void log(alias message, Args...)(Args args) if (isSomeString!(typeof(message))) {
     static if (args.length == 0) {
         OutputDebugStringA(message ~ "\n");
     } else {

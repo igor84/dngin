@@ -11,4 +11,5 @@ configuration "default" {
   lflags "/SUBSYSTEM:WINDOWS" platform="x86"
   platforms "windows"
   dependency "derelict-gl3" version="~>2.0.0-beta.3" 
+  versions "Unicode"
 }

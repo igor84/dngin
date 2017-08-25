@@ -1,6 +1,6 @@
 # DNgin Journal
 
-## 1. Where to start
+### 1. Where to start
 
 Starting decisions:
 
@@ -18,7 +18,7 @@ and shuts down on window close.
 
 Next step is to initialize OpenGL and display a triangle.
 
-## 2. OpenGL Initialization
+### 2. OpenGL Initialization
 After basic OpenGL initialization I needed to find OpenGL bindings for D in order to call OpenGL functions.
 I first looked if I can use DerelictGLES since I want to support mobile platforms but it seems DerelictGLES
 only supports Windows and Mac. Will have to check this on the forum. According to
@@ -34,7 +34,7 @@ it actually happens after ret instruction from glloader's `bindGLFunc`. Will als
 
 At least on 64bit builds I now have a beautiful window filled with hideous purple :).
 
-## 3. First hurdles
+### 3. First hurdles
 First I added a clean Log function that calls OutputDebugStringA so I easier try some things. I learned here
 that LDC uses older version of Phobos standard library and it doesn't have sformat version that takes format
 string as template param. So I next decided to try and make FPS fixed.
@@ -47,3 +47,10 @@ in order to increase the resolution of the Sleep timer.
 
 The reason I want to have fixed FPS is so that I can next work on input handling and testing it in conditions
 where main thread has some busy period between processing events, which is realistic behaviour for games.
+
+### 4. Keyboard Input
+Started implementing keyboard input based on [this](https://blog.molecular-matters.com/2011/09/05/properly-handling-keyboard-input/).
+Got info that DerelictGLES is not maintained for some time and that DerelictGL3 is missing some functions because
+it is in beta and they are in progress. I managed to find why 32 bit builds were crashing on DerelictGL3.reload call.
+It turned out `extern(C)` on getProcAddress should have been `extern(Windows)`. I reported it on github.
+I also added some error handling.
