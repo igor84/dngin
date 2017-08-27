@@ -54,3 +54,6 @@ Got info that DerelictGLES is not maintained for some time and that DerelictGL3 
 it is in beta and they are in progress. I managed to find why 32 bit builds were crashing on DerelictGL3.reload call.
 It turned out `extern(C)` on getProcAddress should have been `extern(Windows)`. I reported it on github.
 I also added some error handling.
+
+### 5. OpenGL
+Following a great tutorial at https://learnopengl.com I implemented OpenGL code for drawing a rectangle.

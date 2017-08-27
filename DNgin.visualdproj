@@ -825,6 +825,7 @@
   <filesToClean>*.obj;*.cmd;*.build;*.json;*.dep</filesToClean>
  </Config>
  <Folder name="DNgin">
+  <File path="source\glrenderer.d" />
   <File path="source\winmain.d" />
  </Folder>
 </DProject>

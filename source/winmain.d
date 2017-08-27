@@ -87,6 +87,11 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
 
     timeBeginPeriod(1); // We change the Sleep time resolution to 1ms
     glViewport(0, 0, WindowWidth, WindowHeight);
+    
+    import glrenderer;
+
+    auto shaderProgram = GLShaderProgram.plainFill;
+    auto rect = GLObject.rect;
 
     import core.time;
     auto oldt = MonoTime.currTime;
@@ -103,8 +108,11 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
             }
         }
 
-        glClearColor(1.0f, uniform(0f, 0.4f), 1.0f, 0.0f);
+        glClearColor(0f, 0f, 0f, 0f);
         glClear(GL_COLOR_BUFFER_BIT);
+
+        shaderProgram.use();
+        rect.draw();
         SwapBuffers(hdc);
 
         auto newt = MonoTime.currTime;
