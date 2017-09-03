@@ -13,6 +13,11 @@ import derelict.opengl;
 
 bool GlobalRunning = true;
 
+enum uint  KB = 1 << 10;
+enum uint  MB = 1 << 20;
+enum ulong GB = 1 << 30;
+enum ulong TB = GB << 10; 
+
 extern (Windows)
 int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     int result;
@@ -82,6 +87,18 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
     }
 
     if (!initOpenGL(hdc)) return 1;
+
+    initMainAllocator();
+
+    import util.winfile;
+    // Just testing the file loading
+    FileReadResult result = ReadEntireFile("README.md");
+    if (result.status.isOk) {
+        import std.algorithm.comparison : min;
+        log!"Loaded File: %s"(cast(char[])result.content[0..min(23, $)]);
+    } else {
+        log!"Loading File failed: %s"(result.status);
+    }
 
     initRawInput(Window);
 
@@ -153,6 +170,19 @@ LRESULT win32MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM
     }
 
     return Result;
+}
+
+void initMainAllocator() {
+    import std.experimental.allocator;
+    import std.experimental.allocator.mmap_allocator;
+    import util.allocators;
+    import std.conv : emplace;
+
+    alias DefRegion = shared SharedRegion!();
+    auto memory = cast(ubyte[])MmapAllocator.instance.allocate(1024*MB);
+    auto a = cast(DefRegion*)memory.ptr;
+    emplace(a, memory[DefRegion.sizeof..$]);
+    processAllocator = sharedAllocatorObject(a);
 }
 
 bool initOpenGL(HDC hdc) {
@@ -322,14 +352,13 @@ void reportSysError(string error) {
     MessageBox(null, msg.toUTFz!LPCTSTR, "Error", MB_OK | MB_ICONEXCLAMATION);
 }
 
-import std.traits : isSomeString;
-void log(alias message, Args...)(Args args) if (isSomeString!(typeof(message))) {
+void log(alias message, Args...)(Args args) {
     static if (args.length == 0) {
         OutputDebugStringA(message ~ "\n");
     } else {
         import std.format;
         char[400] buf;
-        auto res = buf[].sformat(message ~ "\n\0", args);
+        auto res = buf[].sformat!(message ~ "\n\0")(args);
         OutputDebugStringA(res.ptr);
     }
 }

@@ -57,3 +57,39 @@ I also added some error handling.
 
 ### 5. OpenGL
 Following a great tutorial at https://learnopengl.com I implemented OpenGL code for drawing a rectangle.
+
+### 6. Loading images, actually memory allocation
+Now that I have a rectangle I want to try a texture. I looked through existing image loading libs like
+dlib and imageformats but there were a few minor things I didn't like there and I mostly wanted to learn
+about formats I want to load so I decided to implement it myself. Next I looked at file IO Phobos provides
+but it turned out all its functions rely on GC so it turns out I have to write this too :). After reading
+on CreateFile, GetFileSizeEx and ReadFile on MSDN I got something implemented but now I need to get the
+memory for it from somewhere. So I did more reading on std.experimental.allocator package in Phobos. It
+promissed so much but turned out pretty buggy. I couldn't get this to work:
+```
+theAllocator = allocatorObject(Region!MmapAllocator(1024*MB));
+```
+First issue was that Region struct that is created here is also immediatelly destroyed thus releasing
+just allocated memory. Next I tried this:
+```
+theAllocator = allocatorObject(Region!()(cast(ubyte[])MmapAllocator.instance.allocate(1024*MB)));
+```
+This also didn't work because if I got it right it turned out allocatorObject constructed around
+this allocator never sets its internal impl variable to the given allocator. After a lot of debugging
+and reading through the issues I finally got it working by actually passing a pointer to the allocator
+to allocatorObject function:
+```
+auto newAlloc = Region!()(cast(ubyte[])MmapAllocator.instance.allocate(1024*MB));
+theAllocator = allocatorObject(&newAlloc);
+```
+This is far from ideal because newAlloc must now be defined in main function so it remains alive throughout
+program's execution since it is on stack. Better solution is to emplace the Region into memory allocated 
+from MmapAllocator. At this point I also realized I actually want this to be shared allocator but Region
+doesn't have a shared implementation. After a few days of reading, implementing and debugging I finally
+wrote and succesfuly used a shared region allocator. I also tried to fix the defficiency of the first method
+by reserving first two bytes of allocated memory for counting references to that memory so I can only free
+it in the destructor if atomic decrease puts it bellow 0. Unfortunately I couldn't get it to compile since
+I kept getting that destructor is not defined for non-shared object although I didn't have a non-shared
+object anywhere. I tried removing shared from the destructor but then I just got the error that destructor
+for shared object is not defined on another place, and I couldn't find a way to define both shared and
+non-shared destructor.

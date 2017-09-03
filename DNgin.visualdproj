@@ -825,6 +825,10 @@
   <filesToClean>*.obj;*.cmd;*.build;*.json;*.dep</filesToClean>
  </Config>
  <Folder name="DNgin">
+  <Folder name="util">
+   <File path="source\util\allocators.d" />
+   <File path="source\util\winfile.d" />
+  </Folder>
   <File path="source\glrenderer.d" />
   <File path="source\winmain.d" />
  </Folder>
