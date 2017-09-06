@@ -93,3 +93,18 @@ I kept getting that destructor is not defined for non-shared object although I d
 object anywhere. I tried removing shared from the destructor but then I just got the error that destructor
 for shared object is not defined on another place, and I couldn't find a way to define both shared and
 non-shared destructor.
+
+### 7. Now really loading images
+By following bmp file format documentation I found online and the code I wrote earlier while translating
+Casey Muratori's Handmade Hero I implemented basic loading of bitmap. I only support one compression format.
+I also included the code to rearrange color channels so they are in order OpenGL can later receive them.
+Here I found one more bug with the allocators: if processAllocator getter is called for the first time after
+setting it to something the getter will overwrite the set value with default processAllocator. After I
+solved that I also got interested in trying to reorder channels with SIMD instructions. I managed to find
+that SSSE3 PSHUFB instruction can do what I need and implemented it. This made reordering 8 times faster.
+Next I tried it with LDC but it turned out it doesn't support core.simd package __simd function. I got
+some suggestions on the forum to try ldc.gccbuiltins_x86 package, but it just gave me some LLVM error. I
+also tried looking what kind of code is produced by LDC in optimized build and it turned out it actually
+produced SIMD instructions but there is a number of them so it seems it went through a bit more complicated
+process to arrive to the same result. It is only 1.5 times slower then DMD version, so I think it is good
+enough. Next steps will be to add support to other common BMP formats and structure this code a bit better.
