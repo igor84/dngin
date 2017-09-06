@@ -829,6 +829,7 @@
    <File path="source\util\allocators.d" />
    <File path="source\util\winfile.d" />
   </Folder>
+  <File path="source\assetdb.d" />
   <File path="source\glrenderer.d" />
   <File path="source\winmain.d" />
  </Folder>

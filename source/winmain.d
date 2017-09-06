@@ -90,14 +90,11 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
 
     initMainAllocator();
 
-    import util.winfile;
-    // Just testing the file loading
-    FileReadResult result = ReadEntireFile("README.md");
-    if (result.status.isOk) {
-        import std.algorithm.comparison : min;
-        log!"Loaded File: %s"(cast(char[])result.content[0..min(23, $)]);
-    } else {
-        log!"Loading File failed: %s"(result.status);
+    import assetdb;
+    // Just testing the bitmap loading
+    foreach(_; 0..10) {
+        float result = loadBmpImage("test.bmp");
+        log!"Loaded File in: %s"(result);
     }
 
     initRawInput(Window);
@@ -175,14 +172,22 @@ LRESULT win32MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM
 void initMainAllocator() {
     import std.experimental.allocator;
     import std.experimental.allocator.mmap_allocator;
+    version(LDC) import std.experimental.allocator.building_blocks.region;
     import util.allocators;
     import std.conv : emplace;
+    // Calls the getter once before setting it with a new value so it won't override that value later
+    // TODO(igors): Once Phobos fixes this remove this line
+    processAllocator;
 
-    alias DefRegion = shared SharedRegion!();
+    version(LDC) alias DefRegion = Region!();
+    else alias DefRegion = shared SharedRegion!();
     auto memory = cast(ubyte[])MmapAllocator.instance.allocate(1024*MB);
     auto a = cast(DefRegion*)memory.ptr;
     emplace(a, memory[DefRegion.sizeof..$]);
-    processAllocator = sharedAllocatorObject(a);
+    version(LDC) {
+        processAllocator = allocatorObject(a);
+        theAllocator = processAllocator;
+    } else processAllocator = sharedAllocatorObject(a);
 }
 
 bool initOpenGL(HDC hdc) {
