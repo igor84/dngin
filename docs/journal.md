@@ -108,3 +108,15 @@ also tried looking what kind of code is produced by LDC in optimized build and i
 produced SIMD instructions but there is a number of them so it seems it went through a bit more complicated
 process to arrive to the same result. It is only 1.5 times slower then DMD version, so I think it is good
 enough. Next steps will be to add support to other common BMP formats and structure this code a bit better.
+
+### 8. Supporting common bmp format
+Unfortunately most applications seem to still save bitmaps in 24bit per pixel format so I decided to add
+support for loading that format as well. I also refactored the code a bit to make it cleaner and so I can
+write unittest for color channel manipulations and made SIMD work under LDC. It turned out I needed to add
+align(16) to the definition of maskArray.
+
+Thinking a bit about error handling I realized that code mostly only cares if function succeeds or fails
+and only the programmer cares about exact reason of failure so functions should log exact errors and just
+return failed status in most of the cases. Thus next step should be to enable logging and I should first
+try to do it through std.experimental.logger.
+

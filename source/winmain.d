@@ -2,6 +2,7 @@ module winmain;
 
 version (Windows):
 
+pragma(lib, "user32");
 pragma(lib, "gdi32");
 pragma(lib, "winmm");
 pragma(lib, "opengl32");
@@ -18,24 +19,28 @@ enum uint  MB = 1 << 20;
 enum ulong GB = 1 << 30;
 enum ulong TB = GB << 10; 
 
-extern (Windows)
-int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    int result;
+version(unittest) {
+    void main() {}
+} else {
+    extern (Windows)
+    int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+        int result;
 
-    try {
-        Runtime.initialize();
+        try {
+            Runtime.initialize();
 
-        result = myWinMain(hInstance, hPrevInstance, lpCmdLine, nCmdShow);
+            result = myWinMain(hInstance, hPrevInstance, lpCmdLine, nCmdShow);
 
-        Runtime.terminate();
-    } catch (Throwable o) {
-        // catch any uncaught exceptions
-        import std.utf;
-        MessageBox(null, o.toString().toUTFz!LPCTSTR, "Error", MB_OK | MB_ICONEXCLAMATION);
-        result = 1;
+            Runtime.terminate();
+        } catch (Throwable o) {
+            // catch any uncaught exceptions
+            import std.utf;
+            MessageBox(null, o.toString().toUTFz!LPCTSTR, "Error", MB_OK | MB_ICONEXCLAMATION);
+            result = 1;
+        }
+
+        return result;
     }
-
-    return result;
 }
 
 int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
