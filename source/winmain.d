@@ -11,6 +11,7 @@ import core.runtime;
 import core.sys.windows.windows;
 import std.windows.syserror;
 import derelict.opengl;
+import std.experimental.logger.core;
 
 bool GlobalRunning = true;
 
@@ -44,7 +45,7 @@ version(unittest) {
 }
 
 int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
-    WNDCLASS WindowClass = {
+    WNDCLASS windowClass = {
         style: CS_HREDRAW | CS_VREDRAW | CS_OWNDC | CS_DBLCLKS,
         lpfnWndProc: cast(WNDPROC)&win32MainWindowCallback,
         hInstance: instance,
@@ -52,7 +53,7 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
         lpszClassName: "DNginWindowClass",
     };
 
-    if (!RegisterClass(&WindowClass)) {
+    if (!RegisterClass(&windowClass)) {
         reportSysError("Failed to register window class");
         return 1;
     }
@@ -60,15 +61,15 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
     enum DWORD dwExStyle = 0;
     enum DWORD dwStyle = WS_OVERLAPPEDWINDOW|WS_VISIBLE;
 
-    enum WindowWidth = 1366;
-    enum WindowHeight = 768;
+    enum windowWidth = 1366;
+    enum windowHeight = 768;
 
-    RECT windowRect = {0, 0, WindowWidth, WindowHeight};
+    RECT windowRect = {0, 0, windowWidth, windowHeight};
     AdjustWindowRectEx(&windowRect, dwStyle, false, dwExStyle);
 
-    HWND Window = CreateWindowEx(
+    HWND window = CreateWindowEx(
                                  dwExStyle,                     // extended window style
-                                 WindowClass.lpszClassName,     // previously registered class to create
+                                 windowClass.lpszClassName,     // previously registered class to create
                                  "DNgin",                       // window name or title
                                  dwStyle,                       // window style
                                  CW_USEDEFAULT,                 // X
@@ -80,12 +81,12 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
                                  instance,                      // module instance handle
                                  null                           // lpParam for optional additional data to store with the win
                                 );
-    if (!Window){
+    if (!window){
         reportSysError("Failed creating a window");
         return 1;
     }
 
-    HDC hdc = GetDC(Window);
+    HDC hdc = GetDC(window);
     if (!hdc) {
         reportSysError("Failed fetching of window device context");
         return 1;
@@ -94,20 +95,23 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
     if (!initOpenGL(hdc)) return 1;
 
     initMainAllocator();
+    import util.windebuglogger;
+    MakeWinDebugLoggerDefault();
 
     import assetdb;
     // Just testing the bitmap loading
     foreach(_; 0..10) {
         float result = loadBmpImage("test.bmp");
-        log!"Loaded File in: %s"(result);
+        infof("Loaded File in: %s", result);
     }
 
-    initRawInput(Window);
+    initRawInput(window);
+
+    import glrenderer;
 
     timeBeginPeriod(1); // We change the Sleep time resolution to 1ms
-    glViewport(0, 0, WindowWidth, WindowHeight);
+    initViewport(windowWidth, windowHeight);
     
-    import glrenderer;
 
     auto shaderProgram = GLShaderProgram.plainFill;
     auto rect = GLObject.rect;
@@ -127,8 +131,7 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
             }
         }
 
-        glClearColor(0f, 0f, 0f, 0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        clearColorBuffer();
 
         shaderProgram.use();
         rect.draw();
@@ -146,7 +149,7 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
             }
         }
         auto usecs = (newt - oldt).total!"usecs" / 1000f;
-        //log!"Frame Time: %sms, FPS: %s, empty loops: %s"(usecs, 1000f / usecs, i);
+        //infof("Frame Time: %sms, FPS: %s, empty loops: %s", usecs, 1000f / usecs, i);
         oldt = newt;
     }
 
@@ -154,20 +157,20 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
 }
 
 extern(Windows)
-LRESULT win32MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam) {
+LRESULT win32MainWindowCallback(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     LRESULT Result;
 
-    switch(Message) {
+    switch(message) {
         case WM_QUIT, WM_CLOSE:
             GlobalRunning = false;
             break;
 
         case WM_CHAR:
-            wchar c = cast(wchar)WParam;
+            wchar c = cast(wchar)wParam;
             break;
 
         default:
-            Result = DefWindowProc(Window, Message, WParam, LParam);
+            Result = DefWindowProc(window, message, wParam, lParam);
             break;
     }
 
@@ -229,10 +232,10 @@ bool initOpenGL(HDC hdc) {
         return false;
     }
 
+    import glrenderer;
     wglMakeCurrent(hdc, hrc);
     DerelictGL3.load();
-    DerelictGL3.reload();
-    return true;
+    return initGLContext(GLVersion.gl40);
 }
 
 bool preprocessMessage(const ref MSG msg) {
@@ -360,15 +363,4 @@ void reportSysError(string error) {
     import std.utf;
     string msg = error ~ ": " ~ sysErrorString(GetLastError());
     MessageBox(null, msg.toUTFz!LPCTSTR, "Error", MB_OK | MB_ICONEXCLAMATION);
-}
-
-void log(alias message, Args...)(Args args) {
-    static if (args.length == 0) {
-        OutputDebugStringA(message ~ "\n");
-    } else {
-        import std.format;
-        char[400] buf;
-        auto res = buf[].sformat!(message ~ "\n\0")(args);
-        OutputDebugStringA(res.ptr);
-    }
 }

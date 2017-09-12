@@ -1,7 +1,23 @@
 module glrenderer;
 
-import winmain;
 import derelict.opengl;
+import std.experimental.logger.core;
+
+mixin glContext!(GLVersion.gl45);
+private GLContext ctx;
+
+void initViewport(int width, int height) {
+    ctx.glViewport(0, 0, width, height);
+}
+
+void clearColorBuffer(float r = 0f, float g = 0f, float b = 0f, float a = 0f) {
+    ctx.glClearColor(r, g, b, a);
+    ctx.glClear(GL_COLOR_BUFFER_BIT);
+}
+
+bool initGLContext(GLVersion minimumVersion) {
+    return ctx.load() >= minimumVersion;
+}
 
 alias GLVertexShader = GLShader!GL_VERTEX_SHADER;
 alias GLFragmentShader = GLShader!GL_FRAGMENT_SHADER;
@@ -15,26 +31,26 @@ struct GLShader(GLenum type) if (type == GL_VERTEX_SHADER || type == GL_FRAGMENT
     
     bool initWith(const(char)[] src) in { assert(id == 0); }
     body {
-        id = glCreateShader(type);
+        id = ctx.glCreateShader(type);
         string shaderHeader = "#version 330 core\n";
         const(char*)[2] allSrc = [shaderHeader.ptr, src.ptr];
         GLint[2] lengths = [cast(GLint)shaderHeader.length, cast(GLint)src.length];
-        glShaderSource(id, allSrc.length, allSrc.ptr, lengths.ptr);
-        glCompileShader(id);
+        ctx.glShaderSource(id, allSrc.length, allSrc.ptr, lengths.ptr);
+        ctx.glCompileShader(id);
 
         GLint success;
-        glGetShaderiv(id, GL_COMPILE_STATUS, &success);
+        ctx.glGetShaderiv(id, GL_COMPILE_STATUS, &success);
 
         if (!success) {
             del();
 
             GLsizei length;
             char[512] infoLog;
-            glGetShaderInfoLog(id, 512, &length, infoLog.ptr);
+            ctx.glGetShaderInfoLog(id, 512, &length, infoLog.ptr);
             static if (type == GL_VERTEX_SHADER) {
-                log!"Vertex shader compilation failed: %s"(infoLog[0..length]);
+                infof("Vertex shader compilation failed: %s", infoLog[0..length]);
             } else {
-                log!"Fragment shader compilation failed: %s"(infoLog[0..length]);
+                infof("Fragment shader compilation failed: %s", infoLog[0..length]);
             }
         }
 
@@ -43,7 +59,7 @@ struct GLShader(GLenum type) if (type == GL_VERTEX_SHADER || type == GL_FRAGMENT
 
     void del() {
         if (id == 0) return;
-        glDeleteShader(id);
+        ctx.glDeleteShader(id);
         id = 0;
     }
 }
@@ -91,37 +107,37 @@ struct GLShaderProgram {
 
     bool init(GLuint vertexShader, GLuint fragmentShader) in { assert(id == 0); }
     body {
-        id = glCreateProgram();
-        glAttachShader(id, vertexShader);
-        glAttachShader(id, fragmentShader);
-        glLinkProgram(id);
+        id = ctx.glCreateProgram();
+        ctx.glAttachShader(id, vertexShader);
+        ctx.glAttachShader(id, fragmentShader);
+        ctx.glLinkProgram(id);
 
         GLint success;
-        glGetProgramiv(id, GL_LINK_STATUS, &success);
+        ctx.glGetProgramiv(id, GL_LINK_STATUS, &success);
 
         if (!success) {
             del();
 
             GLsizei length;
             char[512] infoLog;
-            glGetProgramInfoLog(id, 512, &length, infoLog.ptr);
-            log!"Shader linking failed: %s"(infoLog[0..length]);
+            ctx.glGetProgramInfoLog(id, 512, &length, infoLog.ptr);
+            infof("Shader linking failed: %s", infoLog[0..length]);
         }
         return success != 0;
     }
 
     pragma(inline, true)
     void use() {
-        glUseProgram(id);
+        ctx.glUseProgram(id);
     }
 
     void setVec4(const(char)[] name, float x, float y, float z, float w) { 
-        glUniform4f(glGetUniformLocation(id, name.ptr), x, y, z, w); 
+        ctx.glUniform4f(ctx.glGetUniformLocation(id, name.ptr), x, y, z, w); 
     }
 
     void del() {
         if (id == 0) return;
-        glDeleteProgram(id);
+        ctx.glDeleteProgram(id);
         id = 0;
     }
 }
@@ -157,30 +173,30 @@ struct GLObject {
     }
 
     this(GLfloat[] vertices, GLuint[] indices, GLVertexAttrib[] vertexAttribs) {
-        glGenVertexArrays(1, &id);
-        glBindVertexArray(id);
+        ctx.glGenVertexArrays(1, &id);
+        ctx.glBindVertexArray(id);
 
         GLuint vbo, ebo;
-        glGenBuffers(1, &vbo);
-        glGenBuffers(1, &ebo);
+        ctx.glGenBuffers(1, &vbo);
+        ctx.glGenBuffers(1, &ebo);
 
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, vertices.length * GLfloat.sizeof, vertices.ptr, GL_STATIC_DRAW);
+        ctx.glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        ctx.glBufferData(GL_ARRAY_BUFFER, vertices.length * GLfloat.sizeof, vertices.ptr, GL_STATIC_DRAW);
 
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.length * GLuint.sizeof, indices.ptr, GL_STATIC_DRAW);
+        ctx.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+        ctx.glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.length * GLuint.sizeof, indices.ptr, GL_STATIC_DRAW);
 
         foreach (GLuint index, vAttrib; vertexAttribs) {
-            glVertexAttribPointer(index, vAttrib.components, vAttrib.type, GL_FALSE, vAttrib.stride, cast(void*)vAttrib.offset);
-            glEnableVertexAttribArray(index);
+            ctx.glVertexAttribPointer(index, vAttrib.components, vAttrib.type, GL_FALSE, vAttrib.stride, cast(void*)vAttrib.offset);
+            ctx.glEnableVertexAttribArray(index);
         }
 
         // note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
-        glBindBuffer(GL_ARRAY_BUFFER, 0); 
+        ctx.glBindBuffer(GL_ARRAY_BUFFER, 0); 
     }
 
     void draw() {
-        glBindVertexArray(id);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, null);
+        ctx.glBindVertexArray(id);
+        ctx.glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, null);
     }
 }

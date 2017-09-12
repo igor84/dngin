@@ -120,3 +120,15 @@ and only the programmer cares about exact reason of failure so functions should 
 return failed status in most of the cases. Thus next step should be to enable logging and I should first
 try to do it through std.experimental.logger.
 
+### 9. Experimental logger and some memory profiling
+While I was reading on std.experimenta.logger I came upon profile-gc build option that writes a log of all
+GC allocations your program makes. I tried it and it turned out that great majority of allocations are
+done by DerelictGL3 in glloader.registerExtensionLoader function. I then tried to use DerelictGL3_Contexts
+and those allocations were gone. But I needed a better reason to use this and have to write "context."
+before every gl call. I read a bit about using multiple GL contexts which this feature should make easy
+and it turned out it is useful when you want to compile shaders and load textures to GPU memory from
+another thread and not block your application which does sound useful. So I decided to keep it.
+
+As for the logger by default it uses appender!string and so GC allocations, but it does give you a
+possibility to override a few methods and manage memory yourself. Because of current differences in Phobos
+versions between DMD and LDC this is now complicated to implement so I decided to use it like this for now.

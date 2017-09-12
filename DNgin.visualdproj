@@ -279,7 +279,7 @@
   <debuglevel>0</debuglevel>
   <debugids />
   <versionlevel>0</versionlevel>
-  <versionids>Unicode</versionids>
+  <versionids>Unicode DerelictGL3_Contexts</versionids>
   <dump_source>0</dump_source>
   <mapverbosity>0</mapverbosity>
   <createImplib>0</createImplib>
@@ -382,7 +382,7 @@
   <debuglevel>0</debuglevel>
   <debugids />
   <versionlevel>0</versionlevel>
-  <versionids>Unicode</versionids>
+  <versionids>Unicode DerelictGL3_Contexts</versionids>
   <dump_source>0</dump_source>
   <mapverbosity>0</mapverbosity>
   <createImplib>0</createImplib>
@@ -588,7 +588,7 @@
   <debuglevel>0</debuglevel>
   <debugids />
   <versionlevel>0</versionlevel>
-  <versionids>Unicode</versionids>
+  <versionids>Unicode DerelictGL3_Contexts</versionids>
   <dump_source>0</dump_source>
   <mapverbosity>0</mapverbosity>
   <createImplib>0</createImplib>
@@ -794,7 +794,7 @@
   <debuglevel>0</debuglevel>
   <debugids />
   <versionlevel>0</versionlevel>
-  <versionids>Unicode</versionids>
+  <versionids>Unicode DerelictGL3_Contexts</versionids>
   <dump_source>0</dump_source>
   <mapverbosity>0</mapverbosity>
   <createImplib>0</createImplib>
@@ -827,6 +827,7 @@
  <Folder name="DNgin">
   <Folder name="util">
    <File path="source\util\allocators.d" />
+   <File path="source\util\windebuglogger.d" />
    <File path="source\util\winfile.d" />
   </Folder>
   <File path="source\assetdb.d" />
