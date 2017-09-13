@@ -132,3 +132,7 @@ another thread and not block your application which does sound useful. So I deci
 As for the logger by default it uses appender!string and so GC allocations, but it does give you a
 possibility to override a few methods and manage memory yourself. Because of current differences in Phobos
 versions between DMD and LDC this is now complicated to implement so I decided to use it like this for now.
+
+### 10. Rendering the texture
+Now that I have image loading I implemented creating and rendering a texture on a quad following the same
+tutorial at https://learnopengl.com.

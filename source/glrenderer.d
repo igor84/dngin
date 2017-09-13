@@ -15,21 +15,34 @@ void clearColorBuffer(float r = 0f, float g = 0f, float b = 0f, float a = 0f) {
     ctx.glClear(GL_COLOR_BUFFER_BIT);
 }
 
-bool initGLContext(GLVersion minimumVersion) {
-    return ctx.load() >= minimumVersion;
+bool initGLContext() {
+    return ctx.load() >= GLVersion.gl40;
 }
 
-alias GLVertexShader = GLShader!GL_VERTEX_SHADER;
-alias GLFragmentShader = GLShader!GL_FRAGMENT_SHADER;
+pragma(inline, true)
+GLShader GLVertexShader(const(char)[] src) {
+    return GLShader(GL_VERTEX_SHADER, src);
+}
 
-struct GLShader(GLenum type) if (type == GL_VERTEX_SHADER || type == GL_FRAGMENT_SHADER) {
+pragma(inline, true)
+GLShader GLFragmentShader(const(char)[] src) {
+    return GLShader(GL_FRAGMENT_SHADER, src);
+}
+
+struct GLShader {
     GLuint id;
 
-    this(const(char)[] src) {
-        initWith(src);
+    this(uint type, const(char)[] src)
+    in { assert(type == GL_VERTEX_SHADER || type == GL_FRAGMENT_SHADER); }
+    body {
+        initWith(type, src);
     }
     
-    bool initWith(const(char)[] src) in { assert(id == 0); }
+    bool initWith(uint type, const(char)[] src)
+    in {
+        assert(type == GL_VERTEX_SHADER || type == GL_FRAGMENT_SHADER);
+        assert(id == 0);
+    }
     body {
         id = ctx.glCreateShader(type);
         string shaderHeader = "#version 330 core\n";
@@ -47,7 +60,7 @@ struct GLShader(GLenum type) if (type == GL_VERTEX_SHADER || type == GL_FRAGMENT
             GLsizei length;
             char[512] infoLog;
             ctx.glGetShaderInfoLog(id, 512, &length, infoLog.ptr);
-            static if (type == GL_VERTEX_SHADER) {
+            if (type == GL_VERTEX_SHADER) {
                 infof("Vertex shader compilation failed: %s", infoLog[0..length]);
             } else {
                 infof("Fragment shader compilation failed: %s", infoLog[0..length]);
@@ -93,6 +106,38 @@ struct GLShaderProgram {
         return GLShaderProgram(vertexShaderSrc, fragmentShaderSrc);
     }
 
+    @property static GLShaderProgram textureFill() {
+        auto vertexShaderSrc = q{
+            layout (location = 0) in vec3 aPos;
+            layout (location = 1) in vec3 aColor;
+            layout (location = 2) in vec2 aTexCoord;
+
+            out vec3 ourColor;
+            out vec2 texCoord;
+
+            void main() {
+                gl_Position = vec4(aPos, 1.0);
+                ourColor = aColor;
+                texCoord = aTexCoord;
+            }
+        };
+
+        auto fragmentShaderSrc = q{
+            out vec4 FragColor;
+
+            in vec3 ourColor;
+            in vec2 texCoord;
+
+            uniform sampler2D fillTexture;
+
+            void main() {
+                FragColor = texture(fillTexture, texCoord);
+            }
+        };
+
+        return GLShaderProgram(vertexShaderSrc, fragmentShaderSrc);
+    }
+
     this(const(char)[] vertexShaderSrc, const(char)[] fragmentShaderSrc) {
         auto vs = GLVertexShader(vertexShaderSrc);
         auto fs = GLFragmentShader(fragmentShaderSrc);
@@ -105,7 +150,8 @@ struct GLShaderProgram {
         init(vertexShader, fragmentShader);
     }
 
-    bool init(GLuint vertexShader, GLuint fragmentShader) in { assert(id == 0); }
+    bool init(GLuint vertexShader, GLuint fragmentShader)
+    in { assert(id == 0); }
     body {
         id = ctx.glCreateProgram();
         ctx.glAttachShader(id, vertexShader);
@@ -172,6 +218,25 @@ struct GLObject {
         return GLObject(vertices, indices, attribs);
     }
 
+    @property static GLObject textureRect() {
+        GLfloat[32] vertices = [
+             0.5f,  0.5f, 0.0f,   1.0f, 1.0f, 0.0f,  1.0f, 1.0f,  // top right
+             0.5f, -0.5f, 0.0f,   1.0f, 0.0f, 0.0f,  1.0f, 0.0f,  // bottom right
+            -0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,  0.0f, 0.0f,  // bottom left
+            -0.5f,  0.5f, 0.0f,   0.0f, 1.0f, 0.0f,  0.0f, 1.0f,  // top left 
+        ];
+        GLuint[6] indices = [  // note that we start from 0!
+            0, 1, 3,  // first Triangle
+            1, 2, 3   // second Triangle
+        ];
+        GLVertexAttrib[3] attribs = [
+            {3, GL_FLOAT, 8 * GLfloat.sizeof, 0},
+            {3, GL_FLOAT, 8 * GLfloat.sizeof, 3 * GLfloat.sizeof},
+            {2, GL_FLOAT, 8 * GLfloat.sizeof, 6 * GLfloat.sizeof},
+        ];
+        return GLObject(vertices, indices, attribs);
+    }
+
     this(GLfloat[] vertices, GLuint[] indices, GLVertexAttrib[] vertexAttribs) {
         ctx.glGenVertexArrays(1, &id);
         ctx.glBindVertexArray(id);
@@ -191,12 +256,27 @@ struct GLObject {
             ctx.glEnableVertexAttribArray(index);
         }
 
-        // note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
+        // note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's
+        // bound vertex buffer object so afterwards we can safely unbind
         ctx.glBindBuffer(GL_ARRAY_BUFFER, 0); 
     }
 
-    void draw() {
+    void draw(uint textureId = 0) {
+        if (textureId) ctx.glBindTexture(GL_TEXTURE_2D, textureId);
         ctx.glBindVertexArray(id);
         ctx.glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, null);
     }
+}
+
+uint createTexture(int width, int height, const(uint)[] pixels) {
+    uint texture;
+    ctx.glGenTextures(1, &texture);
+    ctx.glBindTexture(GL_TEXTURE_2D, texture);
+    // set the texture wrapping/filtering options (on the currently bound texture object)
+    ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
+    ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    ctx.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.ptr);
+    return texture;
 }

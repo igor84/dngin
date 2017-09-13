@@ -50,10 +50,26 @@ private struct WinBmpFileHeader {
     +/
 }
 
+enum LoadImageStatus {
+    fileReadFailed = -1000,
+    invalidFileSize,
+    invalidFileSignature,
+    invalidDimensions,
+    unsupportedComression,
+    unsupportedFormat,
+    invalidMasks,
+    ok = 0,
+}
+
 struct ImageData {
     int width;
     int height;
     uint[] pixels;
+}
+
+struct LoadImageResult {
+    LoadImageStatus status;
+    ImageData image;
 }
 
 pragma(inline, true)
@@ -61,48 +77,45 @@ T[] asArrayOf(T, V)(const ref V[] inArray) {
     return (cast(T*)inArray.ptr)[0..(inArray.length * V.sizeof / T.sizeof)];
 }
 
-float loadBmpImage(const(char)[] path) {
+LoadImageResult loadBmpImage(const(char)[] path) {
     import util.winfile;
     import std.experimental.allocator.mmap_allocator;
     import std.experimental.allocator.building_blocks.region;
 
     auto tmpAllocator = Region!MmapAllocator(100 * 1024 * 1024);
     FileReadResult file = ReadEntireFile(path, allocatorObject(&tmpAllocator));
-    float result = 0f;
 
-    if (!file.status.isOk) return result;
+    if (!file.status.isOk) return LoadImageResult(LoadImageStatus.fileReadFailed);
 
-    if (file.content.length <= WinBmpFileHeader.sizeof) return result;
+    if (file.content.length <= WinBmpFileHeader.sizeof) return LoadImageResult(LoadImageStatus.invalidFileSize);
 
     auto header = cast(WinBmpFileHeader*)file.content.ptr;
 
     // Validate file data
-    if (header.fileType != 0x4d42) return result;
-    if (header.width <= 0) return result;
-    if (header.height <= 0) return result; // We only support bottom up format where height is positive
-    if (header.compression != 3 && header.compression != 0) return result;
-    if (header.bitmapOffset < 40) return result;
-    if (header.bitsPerPixel < 24) return result;
-    if ((header.bitsPerPixel == 32) && (!header.masks.r || !header.masks.g || !header.masks.b || !header.masks.a)) return result;
+    if (header.fileType != 0x4d42) return LoadImageResult(LoadImageStatus.invalidFileSignature);
+    // We only support bottom up format where height is positive
+    if (header.width <= 0 || header.height <= 0) return LoadImageResult(LoadImageStatus.invalidDimensions);
+    if (header.compression != 3 && header.compression != 0) return LoadImageResult(LoadImageStatus.unsupportedComression);
+    if (header.bitmapOffset < 40) return LoadImageResult(LoadImageStatus.unsupportedFormat);
+    if (header.bitsPerPixel < 24) return LoadImageResult(LoadImageStatus.unsupportedFormat);
+    if ((header.bitsPerPixel == 32) && (!header.masks.r || !header.masks.g || !header.masks.b || !header.masks.a)) {
+        return LoadImageResult(LoadImageStatus.invalidMasks);
+    }
     
     auto numpixels = header.width * header.height;
     auto numbytes = numpixels * (header.bitsPerPixel >> 3);
 
-    if (file.content.length < header.bitmapOffset + numbytes) return result;
+    if (file.content.length < header.bitmapOffset + numbytes) return LoadImageResult(LoadImageStatus.invalidFileSize);
     ubyte[] rawpixels = (cast(ubyte*)(file.content.ptr + header.bitmapOffset))[0..numbytes];
 
-    import core.time;
-    auto start = MonoTime.currTime;
-
     ubyte[] apixels = cast(ubyte[])theAllocator.alignedAllocate(numpixels * uint.sizeof, 16);
-    ImageData tresult = {header.width, header.height};
+    LoadImageResult result = {LoadImageStatus.ok, {header.width, header.height}};
 
     if (header.bitsPerPixel == 32) {
-        tresult.pixels = rawpixels.ensureRgbaOrder(header.masks, apixels);
+        result.image.pixels = rawpixels.ensureRgbaOrder(header.masks, apixels);
     } else {
-        tresult.pixels = rawpixels.convert24to32Rgba(apixels);
+        result.image.pixels = rawpixels.convert24to32Rgba(apixels);
     }
-    result = (MonoTime.currTime - start).total!"usecs" / 1000f;
     return result;
 }
 

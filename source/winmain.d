@@ -10,7 +10,6 @@ pragma(lib, "opengl32");
 import core.runtime;
 import core.sys.windows.windows;
 import std.windows.syserror;
-import derelict.opengl;
 import std.experimental.logger.core;
 
 bool GlobalRunning = true;
@@ -98,23 +97,22 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
     import util.windebuglogger;
     MakeWinDebugLoggerDefault();
 
-    import assetdb;
-    // Just testing the bitmap loading
-    foreach(_; 0..10) {
-        float result = loadBmpImage("test.bmp");
-        infof("Loaded File in: %s", result);
-    }
-
     initRawInput(window);
 
     import glrenderer;
+    import assetdb;
+
+    auto loadres = loadBmpImage("test.bmp");
+    uint textureId;
+    if (loadres.status == LoadImageStatus.ok) {
+        with (loadres.image) textureId = createTexture(width, height, pixels);
+    }
 
     timeBeginPeriod(1); // We change the Sleep time resolution to 1ms
     initViewport(windowWidth, windowHeight);
-    
 
-    auto shaderProgram = GLShaderProgram.plainFill;
-    auto rect = GLObject.rect;
+    auto shaderProgram = textureId ? GLShaderProgram.textureFill : GLShaderProgram.plainFill;
+    auto rect = textureId ? GLObject.textureRect : GLObject.rect;
 
     import core.time;
     auto oldt = MonoTime.currTime;
@@ -134,7 +132,7 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
         clearColorBuffer();
 
         shaderProgram.use();
-        rect.draw();
+        rect.draw(textureId);
         SwapBuffers(hdc);
 
         auto newt = MonoTime.currTime;
@@ -235,7 +233,7 @@ bool initOpenGL(HDC hdc) {
     import glrenderer;
     wglMakeCurrent(hdc, hrc);
     DerelictGL3.load();
-    return initGLContext(GLVersion.gl40);
+    return initGLContext();
 }
 
 bool preprocessMessage(const ref MSG msg) {
