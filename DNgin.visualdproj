@@ -827,6 +827,8 @@
  <Folder name="DNgin">
   <Folder name="util">
    <File path="source\util\allocators.d" />
+   <File path="source\util\helpers.d" />
+   <File path="source\util\math.d" />
    <File path="source\util\windebuglogger.d" />
    <File path="source\util\winfile.d" />
   </Folder>

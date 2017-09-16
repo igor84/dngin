@@ -1,6 +1,7 @@
 module assetdb;
 
 import std.experimental.allocator;
+import util.helpers;
 
 private struct ColorChannelMasks {
     align(1):

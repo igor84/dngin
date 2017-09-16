@@ -136,3 +136,28 @@ versions between DMD and LDC this is now complicated to implement so I decided t
 ### 10. Rendering the texture
 Now that I have image loading I implemented creating and rendering a texture on a quad following the same
 tutorial at https://learnopengl.com.
+
+### 11. Preparing for optimized rendering of many quads
+The next step I wanted to try is to render a lot of defferent positioned rects. First I started thinking
+how can I efficiently call these shaders with proper data. First obvious solution is to generate a separate
+VAO (vertex array object) for each rect with its own vertex data and texture coordinate data. That way I
+can keep one shader bound but each frame create and bind separate VAO for each rect and maybe a separate
+texture too. Better solution is, if I can read all rect images from one textures, to collect all rect points
+and generate just one VAO for them all. But generating VAOs each frame feels expensive. So I came to an
+idea to place indexes in VAO and then for each rect just bind uniforms with needed data that will be indexed
+by data from VAO. In this case VAO just needs to contain 4 uvec2, one for each rect point. Then we can pass
+two uniforms:
+
+- vec4 coords where if rect should be drown from (x1, y1) to (x2, y2) should be equal to vec4(x1, y1, x2, y2)
+- vec2 texCoord[4] which contains 4 texture coordinates for top-left, top-right, bottom-right and bottom-left
+corner in that order
+
+GLSL already provides us with gl_VertexID variable that is equal to the vertex's index which we can use for
+indexing texCoord array. I refactored the code to support this in about an hour and then spent another 7h
+thinking about ways to debug and determine why it isn't working. I learned a bit about apitrace tool and
+I installed NVidia Nsight only to determine my laptop and desktop GPUs don't support shader debugging. After
+a lot of point drawing I conlcuded that uvec2 in the shader receives 0 when I pass 0 and received some crazy
+huge values when I pass anything else. I tryed switching it everywhere to floats and vec3 and then casting
+it to uint in the shader and that finally worked. I still have no idea why uvec3 behaved so wierd. Next time
+I want to actually add drawing of multiple rects with this code and then measure just how slower is to
+precalcuate points to clip space on CPU or pass needed data and do it on GPU.

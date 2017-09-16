@@ -21,7 +21,7 @@ class WinDebugLogger : Logger {
     }
 }
 
-void MakeWinDebugLoggerDefault(IAllocator a = theAllocator) {
+void makeWinDebugLoggerDefault(IAllocator a = theAllocator) {
     stdThreadLocalLog; // Calling getter once so it doesn't later override the value we set
     stdThreadLocalLog = a.make!(WinDebugLogger)(LogLevel.all);
 }

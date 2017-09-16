@@ -11,13 +11,10 @@ import core.runtime;
 import core.sys.windows.windows;
 import std.windows.syserror;
 import std.experimental.logger.core;
+import util.helpers;
+import util.math;
 
 bool GlobalRunning = true;
-
-enum uint  KB = 1 << 10;
-enum uint  MB = 1 << 20;
-enum ulong GB = 1 << 30;
-enum ulong TB = GB << 10; 
 
 version(unittest) {
     void main() {}
@@ -95,7 +92,7 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
 
     initMainAllocator();
     import util.windebuglogger;
-    MakeWinDebugLoggerDefault();
+    makeWinDebugLoggerDefault();
 
     initRawInput(window);
 
@@ -104,15 +101,12 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
 
     auto loadres = loadBmpImage("test.bmp");
     uint textureId;
-    if (loadres.status == LoadImageStatus.ok) {
+    if (loadres.status.isOk) {
         with (loadres.image) textureId = createTexture(width, height, pixels);
     }
 
     timeBeginPeriod(1); // We change the Sleep time resolution to 1ms
     initViewport(windowWidth, windowHeight);
-
-    auto shaderProgram = textureId ? GLShaderProgram.textureFill : GLShaderProgram.plainFill;
-    auto rect = textureId ? GLObject.textureRect : GLObject.rect;
 
     import core.time;
     auto oldt = MonoTime.currTime;
@@ -131,8 +125,8 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
 
         clearColorBuffer();
 
-        shaderProgram.use();
-        rect.draw(textureId);
+        if (textureId) drawImage(100, 100, 500, 300, textureId);
+        else drawRect(100, 100, 500, 300, V3(0, 0.5, 0.5));
         SwapBuffers(hdc);
 
         auto newt = MonoTime.currTime;

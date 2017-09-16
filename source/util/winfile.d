@@ -1,6 +1,7 @@
 module util.winfile;
 
 import std.experimental.allocator;
+import util.helpers;
 
 enum FileReadStatus {
     ok,
@@ -9,10 +10,6 @@ enum FileReadStatus {
     memoryAllocationFailed,
     readFileFailed,
     readSizeBad,
-}
-
-bool isOk(FileReadStatus status) {
-    return status == FileReadStatus.ok;
 }
 
 struct FileReadResult {
@@ -46,7 +43,7 @@ body {
 
     FileReadResult result = ReadFileIntoBuffer(file, content);
 
-    if (!result.status.isOk()) theAllocator.dispose(content);
+    if (!result.status.isOk) theAllocator.dispose(content);
 
     return result;
 }

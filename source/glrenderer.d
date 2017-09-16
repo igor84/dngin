@@ -2,12 +2,18 @@ module glrenderer;
 
 import derelict.opengl;
 import std.experimental.logger.core;
+import util.math;
 
 mixin glContext!(GLVersion.gl45);
 private GLContext ctx;
 
+private V2 screenDim;
+
 void initViewport(int width, int height) {
+    screenDim = V2(width, height);
     ctx.glViewport(0, 0, width, height);
+    initDefaultShaders();
+    initDefaultGLObjects();
 }
 
 void clearColorBuffer(float r = 0f, float g = 0f, float b = 0f, float a = 0f) {
@@ -80,64 +86,6 @@ struct GLShader {
 struct GLShaderProgram {
     GLuint id;
 
-    @property static GLShaderProgram plainFill() {
-        auto vertexShaderSrc = q{
-            layout (location = 0) in vec3 aPos;
-            layout (location = 1) in vec3 aColor;
-
-            out vec3 ourColor;
-
-            void main() {
-                gl_Position = vec4(aPos, 1.0);
-                ourColor = aColor;
-            }
-        };
-
-        auto fragmentShaderSrc = q{
-            out vec4 FragColor;
-
-            in vec3 ourColor;
-
-            void main() {
-                FragColor = vec4(ourColor, 1f);
-            }
-        };
-
-        return GLShaderProgram(vertexShaderSrc, fragmentShaderSrc);
-    }
-
-    @property static GLShaderProgram textureFill() {
-        auto vertexShaderSrc = q{
-            layout (location = 0) in vec3 aPos;
-            layout (location = 1) in vec3 aColor;
-            layout (location = 2) in vec2 aTexCoord;
-
-            out vec3 ourColor;
-            out vec2 texCoord;
-
-            void main() {
-                gl_Position = vec4(aPos, 1.0);
-                ourColor = aColor;
-                texCoord = aTexCoord;
-            }
-        };
-
-        auto fragmentShaderSrc = q{
-            out vec4 FragColor;
-
-            in vec3 ourColor;
-            in vec2 texCoord;
-
-            uniform sampler2D fillTexture;
-
-            void main() {
-                FragColor = texture(fillTexture, texCoord);
-            }
-        };
-
-        return GLShaderProgram(vertexShaderSrc, fragmentShaderSrc);
-    }
-
     this(const(char)[] vertexShaderSrc, const(char)[] fragmentShaderSrc) {
         auto vs = GLVertexShader(vertexShaderSrc);
         auto fs = GLFragmentShader(fragmentShaderSrc);
@@ -169,6 +117,7 @@ struct GLShaderProgram {
             ctx.glGetProgramInfoLog(id, 512, &length, infoLog.ptr);
             infof("Shader linking failed: %s", infoLog[0..length]);
         }
+
         return success != 0;
     }
 
@@ -177,8 +126,28 @@ struct GLShaderProgram {
         ctx.glUseProgram(id);
     }
 
+    pragma(inline, true)
     void setVec4(const(char)[] name, float x, float y, float z, float w) { 
-        ctx.glUniform4f(ctx.glGetUniformLocation(id, name.ptr), x, y, z, w); 
+        auto index = ctx.glGetUniformLocation(id, name.ptr);
+        ctx.glUniform4f(index, x, y, z, w); 
+    }
+
+    pragma(inline, true)
+    void setMat4(const(char)[] name, const(float)[] mat4x4) { 
+        auto index = ctx.glGetUniformLocation(id, name.ptr);
+        ctx.glUniformMatrix4fv(index, 1, GL_FALSE, mat4x4.ptr); 
+    }
+
+    pragma(inline, true)
+    void setVec2Array(const(char)[] name, const(V2)[] vec2Array) { 
+        auto index = ctx.glGetUniformLocation(id, name.ptr);
+        ctx.glUniform2fv(index, cast(int)vec2Array.length, vec2Array[0].e.ptr); 
+    }
+
+    pragma(inline, true)
+    void setVec3Array(const(char)[] name, const(V3)[] vec3Array) { 
+        auto index = ctx.glGetUniformLocation(id, name.ptr);
+        ctx.glUniform3fv(index, cast(int)vec3Array.length, vec3Array[0].e.ptr); 
     }
 
     void del() {
@@ -186,6 +155,72 @@ struct GLShaderProgram {
         ctx.glDeleteProgram(id);
         id = 0;
     }
+}
+
+enum DefShader {
+    none,
+    colorRect,
+    textureRect,
+
+    count,
+};
+
+private GLShaderProgram[DefShader.count] defaultShaders;
+
+private void initDefaultShaders() {
+    defaultShaders[DefShader.colorRect] = GLShaderProgram(
+        q{
+            layout (location = 0) in vec2 aPos;
+
+            out vec3 ourColor;
+
+            uniform vec4 coords;
+            uniform vec3 colors[4];
+
+            void main() {
+                gl_Position = vec4(coords[uint(aPos.x)], coords[uint(aPos.y)], 0.0, 1.0);
+                ourColor = colors[gl_VertexID];
+            }
+        },
+
+        q{
+            out vec4 FragColor;
+
+            in vec3 ourColor;
+
+            void main() {
+                FragColor = vec4(ourColor, 1.0);
+            }
+        }
+    );
+    defaultShaders[DefShader.textureRect] = GLShaderProgram(
+        q{
+            layout (location = 0) in vec2 aPos;
+
+            out vec3 ourColor;
+            out vec2 texCoord;
+
+            uniform vec4 coords;
+            uniform vec2 texCoords[4];
+
+            void main() {
+                gl_Position = vec4(coords[uint(aPos.x)], coords[uint(aPos.y)], 0.0, 1.0);
+                texCoord = texCoords[gl_VertexID];
+            }
+        },
+
+        q{
+            out vec4 FragColor;
+
+            in vec2 texCoord;
+
+            uniform sampler2D fillTexture;
+
+            void main() {
+                FragColor = texture(fillTexture, texCoord);
+            }
+        }
+    );
 }
 
 struct GLVertexAttrib {
@@ -198,46 +233,7 @@ struct GLVertexAttrib {
 struct GLObject {
     GLuint id;
 
-    private GLuint vboId;
-
-    @property static GLObject rect() {
-        GLfloat[24] vertices = [
-             0.5f,  0.5f, 0.0f, 1.0f, 1.0f, 0.0f,  // top right
-             0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f,  // bottom right
-            -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f,  // bottom left
-            -0.5f,  0.5f, 0.0f, 0.0f, 1.0f, 0.0f,  // top left 
-        ];
-        GLuint[6] indices = [  // note that we start from 0!
-            0, 1, 3,  // first Triangle
-            1, 2, 3   // second Triangle
-        ];
-        GLVertexAttrib[2] attribs = [
-            {3, GL_FLOAT, 6 * GLfloat.sizeof, 0},
-            {3, GL_FLOAT, 6 * GLfloat.sizeof, 3 * GLfloat.sizeof},
-        ];
-        return GLObject(vertices, indices, attribs);
-    }
-
-    @property static GLObject textureRect() {
-        GLfloat[32] vertices = [
-             0.5f,  0.5f, 0.0f,   1.0f, 1.0f, 0.0f,  1.0f, 1.0f,  // top right
-             0.5f, -0.5f, 0.0f,   1.0f, 0.0f, 0.0f,  1.0f, 0.0f,  // bottom right
-            -0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,  0.0f, 0.0f,  // bottom left
-            -0.5f,  0.5f, 0.0f,   0.0f, 1.0f, 0.0f,  0.0f, 1.0f,  // top left 
-        ];
-        GLuint[6] indices = [  // note that we start from 0!
-            0, 1, 3,  // first Triangle
-            1, 2, 3   // second Triangle
-        ];
-        GLVertexAttrib[3] attribs = [
-            {3, GL_FLOAT, 8 * GLfloat.sizeof, 0},
-            {3, GL_FLOAT, 8 * GLfloat.sizeof, 3 * GLfloat.sizeof},
-            {2, GL_FLOAT, 8 * GLfloat.sizeof, 6 * GLfloat.sizeof},
-        ];
-        return GLObject(vertices, indices, attribs);
-    }
-
-    this(GLfloat[] vertices, GLuint[] indices, GLVertexAttrib[] vertexAttribs) {
+    this(GLfloat[] positions, GLuint[] indices, GLVertexAttrib[] vertexAttribs) {
         ctx.glGenVertexArrays(1, &id);
         ctx.glBindVertexArray(id);
 
@@ -246,7 +242,7 @@ struct GLObject {
         ctx.glGenBuffers(1, &ebo);
 
         ctx.glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        ctx.glBufferData(GL_ARRAY_BUFFER, vertices.length * GLfloat.sizeof, vertices.ptr, GL_STATIC_DRAW);
+        ctx.glBufferData(GL_ARRAY_BUFFER, positions.length * typeof(positions[0]).sizeof, positions.ptr, GL_STATIC_DRAW);
 
         ctx.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
         ctx.glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.length * GLuint.sizeof, indices.ptr, GL_STATIC_DRAW);
@@ -261,11 +257,30 @@ struct GLObject {
         ctx.glBindBuffer(GL_ARRAY_BUFFER, 0); 
     }
 
-    void draw(uint textureId = 0) {
-        if (textureId) ctx.glBindTexture(GL_TEXTURE_2D, textureId);
+    void draw() {
         ctx.glBindVertexArray(id);
         ctx.glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, null);
     }
+}
+
+enum DefGLObject {
+    none,
+    rect,
+
+    count,
+}
+
+private GLObject[DefGLObject.count] defaultGLObjects;
+
+private void initDefaultGLObjects() {
+    GLuint[6] rectIndices = [
+        2, 1, 0,  // first Triangle
+        3, 2, 0   // second Triangle
+    ];
+    // xpos, ypos where coords are in layout x1, y1, x2, y2 so xpos can be 0 or 2 and ypos can be 1 or 3
+    GLfloat[4 * 2] positions = [0,1, 2,1, 2,3, 0,3];
+    GLVertexAttrib[1] attribs = [{2, GL_FLOAT, 2 * GLfloat.sizeof, 0}];
+    defaultGLObjects[DefGLObject.rect] = GLObject(positions, rectIndices, attribs);
 }
 
 uint createTexture(int width, int height, const(uint)[] pixels) {
@@ -279,4 +294,35 @@ uint createTexture(int width, int height, const(uint)[] pixels) {
     ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     ctx.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.ptr);
     return texture;
+}
+
+void drawRect(float x, float y, float w, float h, V3 color) {
+    auto x1 = 2f * x / screenDim.x - 1f;
+    auto y1 = -2f * y / screenDim.y + 1f;
+    auto x2 = x1 + 2f * w / screenDim.x;
+    auto y2 = y1 - 2f * h / screenDim.y;
+
+    auto shader = defaultShaders[DefShader.colorRect];
+    shader.use();
+    shader.setVec4("coords", x1, y1, x2, y2);
+    immutable V3[4] colors = [V3(1,0,0), V3(1,1,0), V3(0,1,0), V3(0,0,1)];
+    shader.setVec3Array("colors", colors);
+    
+    defaultGLObjects[DefGLObject.rect].draw();
+}
+
+void drawImage(float x, float y, float w, float h, uint textureId) {
+    auto x1 = 2f * x / screenDim.x - 1f;
+    auto y1 = -2f * y / screenDim.y + 1f;
+    auto x2 = x1 + 2f * w / screenDim.x;
+    auto y2 = y1 - 2f * h / screenDim.y;
+
+    auto shader = defaultShaders[DefShader.textureRect];
+    shader.use();
+    shader.setVec4("coords", x1, y1, x2, y2);
+    immutable V2[4] texCoords = [V2(0,1), V2(1,1), V2(1,0), V2(0,0)];
+    shader.setVec2Array("texCoords", texCoords);
+    
+    ctx.glBindTexture(GL_TEXTURE_2D, textureId);
+    defaultGLObjects[DefGLObject.rect].draw();
 }
