@@ -166,3 +166,12 @@ precalcuate points to clip space on CPU or pass needed data and do it on GPU.
 So after some tinkering it turned out that drawing up to about 500 rects transforming vertices to clip space
 on CPU is actually just a tiny bit faster then on GPU, but above that GPU starts to win. With 1000 rects it
 still performs only slightly better. Next improvement to try is to use instancing.
+
+### 13. Generating VAO every frame
+After reading about instancing I concluded it is useful when besides vertex specific data you also have data
+that should be same across all vertexes of one mesh instance, but different for each instance. I keep
+imagining how I will use all these rects for UI drawing so I only need per vertex data. So I made a test
+where I collect all draw calls into a vertex and indices buffer and then generate and submit one VAO for
+all rects to be drawn. This approach is about 10 times faster on 1000 rects but for some reason it looses
+a lot of performance around 3000 rects. Up to it it does all drawing in about 0.6ms and somewhere above
+that number it goes to 30ms.

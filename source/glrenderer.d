@@ -13,7 +13,6 @@ void initViewport(int width, int height) {
     screenDim = V2(width, height);
     ctx.glViewport(0, 0, width, height);
     initDefaultShaders();
-    initDefaultGLObjects();
 }
 
 void clearColorBuffer(float r = 0f, float g = 0f, float b = 0f, float a = 0f) {
@@ -177,16 +176,15 @@ private void initDefaultShaders() {
     auto newShader = GLShaderProgram(
         q{
             layout (location = 0) in vec2 aPos;
+            layout (location = 1) in vec3 aColor;
 
             out vec3 ourColor;
 
             uniform mat4 screenToClipSpace;
-            uniform vec4 coords;
-            uniform vec3 colors[4];
 
             void main() {
-                gl_Position = vec4(coords[uint(aPos.x)], coords[uint(aPos.y)], 0.0, 1.0) * screenToClipSpace;
-                ourColor = colors[gl_VertexID];
+                gl_Position = vec4(aPos.x, aPos.y, 0.0, 1.0) * screenToClipSpace;
+                ourColor = aColor;
             }
         },
 
@@ -206,17 +204,15 @@ private void initDefaultShaders() {
     newShader = GLShaderProgram(
         q{
             layout (location = 0) in vec2 aPos;
+            layout (location = 1) in vec2 txCoord;
 
-            out vec3 ourColor;
             out vec2 texCoord;
 
             uniform mat4 screenToClipSpace;
-            uniform vec4 coords;
-            uniform vec2 texCoords[4];
 
             void main() {
-                gl_Position = vec4(coords[uint(aPos.x)], coords[uint(aPos.y)], 0.0, 1.0) * screenToClipSpace;
-                texCoord = texCoords[gl_VertexID];
+                gl_Position = vec4(aPos.x, aPos.y, 0.0, 1.0) * screenToClipSpace;
+                texCoord = txCoord;
             }
         },
 
@@ -246,19 +242,20 @@ struct GLVertexAttrib {
 
 struct GLObject {
     GLuint id;
+    GLuint vboid;
+    GLuint eboid;
 
     this(GLfloat[] positions, GLuint[] indices, GLVertexAttrib[] vertexAttribs) {
         ctx.glGenVertexArrays(1, &id);
         ctx.glBindVertexArray(id);
 
-        GLuint vbo, ebo;
-        ctx.glGenBuffers(1, &vbo);
-        ctx.glGenBuffers(1, &ebo);
+        ctx.glGenBuffers(1, &vboid);
+        ctx.glGenBuffers(1, &eboid);
 
-        ctx.glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        ctx.glBindBuffer(GL_ARRAY_BUFFER, vboid);
         ctx.glBufferData(GL_ARRAY_BUFFER, positions.length * typeof(positions[0]).sizeof, positions.ptr, GL_STATIC_DRAW);
 
-        ctx.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+        ctx.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eboid);
         ctx.glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.length * GLuint.sizeof, indices.ptr, GL_STATIC_DRAW);
 
         foreach (GLuint index, vAttrib; vertexAttribs) {
@@ -271,9 +268,15 @@ struct GLObject {
         ctx.glBindBuffer(GL_ARRAY_BUFFER, 0); 
     }
 
-    void draw() {
+    void draw(uint elements = 6) {
         ctx.glBindVertexArray(id);
-        ctx.glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, null);
+        ctx.glDrawElements(GL_TRIANGLES, elements, GL_UNSIGNED_INT, null);
+    }
+
+    void deleteObject() {
+        ctx.glDeleteVertexArrays(1, &id);
+        ctx.glDeleteBuffers(1, &vboid);
+        ctx.glDeleteBuffers(1, &eboid);
     }
 }
 
@@ -282,19 +285,6 @@ enum DefGLObject {
     rect,
 
     count,
-}
-
-private GLObject[DefGLObject.count] defaultGLObjects;
-
-private void initDefaultGLObjects() {
-    GLuint[6] rectIndices = [
-        2, 1, 0,  // first Triangle
-        3, 2, 0   // second Triangle
-    ];
-    // xpos, ypos where coords are in layout x1, y1, x2, y2 so xpos can be 0 or 2 and ypos can be 1 or 3
-    GLfloat[4 * 2] positions = [0,1, 2,1, 2,3, 0,3];
-    GLVertexAttrib[1] attribs = [{2, GL_FLOAT, 2 * GLfloat.sizeof, 0}];
-    defaultGLObjects[DefGLObject.rect] = GLObject(positions, rectIndices, attribs);
 }
 
 uint createTexture(int width, int height, const(uint)[] pixels) {
@@ -310,23 +300,72 @@ uint createTexture(int width, int height, const(uint)[] pixels) {
     return texture;
 }
 
+private enum commandBufferSize = 480000;
+struct RenderCommands {
+    float[commandBufferSize] verts;
+    uint usedVerts;
+    uint[commandBufferSize / 16 * 6] indices;
+    uint usedIndices;
+    uint textureId;
+}
+
+private RenderCommands renderCommands;
+
 void drawRect(float x, float y, float w, float h, V3 color) {
-    auto shader = defaultShaders[DefShader.colorRect];
-    shader.use();
-    shader.setVec4("coords", x, y, x + w, y + h);
-    immutable V3[4] colors = [V3(1,0,0), V3(1,1,0), V3(0,1,0), V3(0,0,1)];
-    shader.setVec3Array("colors", colors);
-    
-    defaultGLObjects[DefGLObject.rect].draw();
+    auto vi = renderCommands.usedVerts;
+    auto ii = renderCommands.usedIndices;
+    auto x2 = x + w;
+    auto y2 = y + h;
+    float[20] points = [x,y,1,0,0, x2,y,1,1,0, x2,y2,0,1,0, x,y2,0,0,1];
+    renderCommands.verts[vi..vi+20] = points[];
+    uint s = vi / 5;
+    uint[6] indices = [s, s+1, s+2, s, s+2, s+3];
+    renderCommands.indices[ii..ii+6] = indices[];
+    renderCommands.usedVerts += 20;
+    renderCommands.usedIndices += 6;
 }
 
 void drawImage(float x, float y, float w, float h, uint textureId) {
-    auto shader = defaultShaders[DefShader.textureRect];
-    shader.use();
-    shader.setVec4("coords", x, y, x + w, y + h);
-    immutable V2[4] texCoords = [V2(0,1), V2(1,1), V2(1,0), V2(0,0)];
-    shader.setVec2Array("texCoords", texCoords);
-    
-    ctx.glBindTexture(GL_TEXTURE_2D, textureId);
-    defaultGLObjects[DefGLObject.rect].draw();
+    auto vi = renderCommands.usedVerts;
+    auto ii = renderCommands.usedIndices;
+    auto x2 = x + w;
+    auto y2 = y + h;
+    float[16] points = [x,y,0,1, x2,y,1,1, x2,y2,1,0, x,y2,0,0];
+    renderCommands.verts[vi..vi+16] = points[];
+    uint s = vi / 4;
+    uint[6] indices = [s, s+1, s+2, s, s+2, s+3];
+    renderCommands.indices[ii..ii+6] = indices[];
+    renderCommands.usedVerts += 16;
+    renderCommands.usedIndices += 6;
+    renderCommands.textureId = textureId;
+}
+
+void flushDrawBuffers() {
+    auto vc = renderCommands.usedVerts;
+    auto ic = renderCommands.usedIndices;
+    renderCommands.usedVerts = 0;
+    renderCommands.usedIndices = 0;
+    if (!vc || !ic) return;
+
+    GLObject rects;
+    scope(exit) rects.deleteObject();
+
+    if (renderCommands.textureId) {
+        GLVertexAttrib[2] attrs = [
+            {2, GL_FLOAT, 4 * GLfloat.sizeof, 0},
+            {2, GL_FLOAT, 4 * GLfloat.sizeof, 8}
+        ];
+        rects = GLObject(renderCommands.verts[0..vc], renderCommands.indices[0..ic], attrs);
+        defaultShaders[DefShader.textureRect].use();
+        ctx.glBindTexture(GL_TEXTURE_2D, renderCommands.textureId);
+    } else {
+        GLVertexAttrib[2] attrs = [
+            {2, GL_FLOAT, 5 * GLfloat.sizeof, 0},
+            {3, GL_FLOAT, 5 * GLfloat.sizeof, 8}
+        ];
+        rects = GLObject(renderCommands.verts[0..vc], renderCommands.indices[0..ic], attrs);
+        defaultShaders[DefShader.colorRect].use();
+    }
+    rects.draw(ic);
+    renderCommands.textureId = 0;
 }

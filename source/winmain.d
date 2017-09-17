@@ -130,13 +130,14 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
         int y;
         enum w = 80;
         enum h = 60;
-        foreach (i; 0..220) {
+        foreach (i; 0..1000) {
             if (x < w) y = (y + h) % (windowHeight - h);
             x = (x + w) % (windowWidth - w);
 
             if (textureId) drawImage(x, y, w, h, textureId);
             else drawRect(x, y, w, h, V3(0, 0.5, 0.5));
         }
+        flushDrawBuffers();
         SwapBuffers(hdc);
         auto drawdur = MonoTime.currTime - startt;
         auto durusecs = drawdur.total!"usecs" / 1000f;
