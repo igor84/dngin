@@ -168,17 +168,24 @@ enum DefShader {
 private GLShaderProgram[DefShader.count] defaultShaders;
 
 private void initDefaultShaders() {
-    defaultShaders[DefShader.colorRect] = GLShaderProgram(
+    immutable GLfloat[16] screenToClipSpace = [
+        2f / screenDim.x, 0, 0, -1,
+        0, -2f / screenDim.y, 0, 1,
+        0, 0, 1, 0,
+        0, 0, 0, 1,
+    ];
+    auto newShader = GLShaderProgram(
         q{
             layout (location = 0) in vec2 aPos;
 
             out vec3 ourColor;
 
+            uniform mat4 screenToClipSpace;
             uniform vec4 coords;
             uniform vec3 colors[4];
 
             void main() {
-                gl_Position = vec4(coords[uint(aPos.x)], coords[uint(aPos.y)], 0.0, 1.0);
+                gl_Position = vec4(coords[uint(aPos.x)], coords[uint(aPos.y)], 0.0, 1.0) * screenToClipSpace;
                 ourColor = colors[gl_VertexID];
             }
         },
@@ -193,18 +200,22 @@ private void initDefaultShaders() {
             }
         }
     );
-    defaultShaders[DefShader.textureRect] = GLShaderProgram(
+    newShader.use();
+    newShader.setMat4("screenToClipSpace", screenToClipSpace);
+    defaultShaders[DefShader.colorRect] = newShader;
+    newShader = GLShaderProgram(
         q{
             layout (location = 0) in vec2 aPos;
 
             out vec3 ourColor;
             out vec2 texCoord;
 
+            uniform mat4 screenToClipSpace;
             uniform vec4 coords;
             uniform vec2 texCoords[4];
 
             void main() {
-                gl_Position = vec4(coords[uint(aPos.x)], coords[uint(aPos.y)], 0.0, 1.0);
+                gl_Position = vec4(coords[uint(aPos.x)], coords[uint(aPos.y)], 0.0, 1.0) * screenToClipSpace;
                 texCoord = texCoords[gl_VertexID];
             }
         },
@@ -221,6 +232,9 @@ private void initDefaultShaders() {
             }
         }
     );
+    newShader.use();
+    newShader.setMat4("screenToClipSpace", screenToClipSpace);
+    defaultShaders[DefShader.textureRect] = newShader;
 }
 
 struct GLVertexAttrib {
@@ -297,14 +311,9 @@ uint createTexture(int width, int height, const(uint)[] pixels) {
 }
 
 void drawRect(float x, float y, float w, float h, V3 color) {
-    auto x1 = 2f * x / screenDim.x - 1f;
-    auto y1 = -2f * y / screenDim.y + 1f;
-    auto x2 = x1 + 2f * w / screenDim.x;
-    auto y2 = y1 - 2f * h / screenDim.y;
-
     auto shader = defaultShaders[DefShader.colorRect];
     shader.use();
-    shader.setVec4("coords", x1, y1, x2, y2);
+    shader.setVec4("coords", x, y, x + w, y + h);
     immutable V3[4] colors = [V3(1,0,0), V3(1,1,0), V3(0,1,0), V3(0,0,1)];
     shader.setVec3Array("colors", colors);
     
@@ -312,14 +321,9 @@ void drawRect(float x, float y, float w, float h, V3 color) {
 }
 
 void drawImage(float x, float y, float w, float h, uint textureId) {
-    auto x1 = 2f * x / screenDim.x - 1f;
-    auto y1 = -2f * y / screenDim.y + 1f;
-    auto x2 = x1 + 2f * w / screenDim.x;
-    auto y2 = y1 - 2f * h / screenDim.y;
-
     auto shader = defaultShaders[DefShader.textureRect];
     shader.use();
-    shader.setVec4("coords", x1, y1, x2, y2);
+    shader.setVec4("coords", x, y, x + w, y + h);
     immutable V2[4] texCoords = [V2(0,1), V2(1,1), V2(1,0), V2(0,0)];
     shader.setVec2Array("texCoords", texCoords);
     

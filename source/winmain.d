@@ -125,9 +125,22 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
 
         clearColorBuffer();
 
-        if (textureId) drawImage(100, 100, 500, 300, textureId);
-        else drawRect(100, 100, 500, 300, V3(0, 0.5, 0.5));
+        auto startt = MonoTime.currTime;
+        int x;
+        int y;
+        enum w = 80;
+        enum h = 60;
+        foreach (i; 0..220) {
+            if (x < w) y = (y + h) % (windowHeight - h);
+            x = (x + w) % (windowWidth - w);
+
+            if (textureId) drawImage(x, y, w, h, textureId);
+            else drawRect(x, y, w, h, V3(0, 0.5, 0.5));
+        }
         SwapBuffers(hdc);
+        auto drawdur = MonoTime.currTime - startt;
+        auto durusecs = drawdur.total!"usecs" / 1000f;
+        infof("Draw Time: %sms", durusecs);
 
         auto newt = MonoTime.currTime;
         auto fdur = newt - oldt;

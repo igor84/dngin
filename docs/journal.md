@@ -161,3 +161,8 @@ huge values when I pass anything else. I tryed switching it everywhere to floats
 it to uint in the shader and that finally worked. I still have no idea why uvec3 behaved so wierd. Next time
 I want to actually add drawing of multiple rects with this code and then measure just how slower is to
 precalcuate points to clip space on CPU or pass needed data and do it on GPU.
+
+### 12. Measuring drawRect performance
+So after some tinkering it turned out that drawing up to about 500 rects transforming vertices to clip space
+on CPU is actually just a tiny bit faster then on GPU, but above that GPU starts to win. With 1000 rects it
+still performs only slightly better. Next improvement to try is to use instancing.
