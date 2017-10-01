@@ -130,7 +130,7 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
         int y;
         enum w = 80;
         enum h = 60;
-        foreach (i; 0..1000) {
+        foreach (i; 0..10000) {
             if (x < w) y = (y + h) % (windowHeight - h);
             x = (x + w) % (windowWidth - w);
 

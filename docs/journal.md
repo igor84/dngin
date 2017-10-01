@@ -175,3 +175,11 @@ where I collect all draw calls into a vertex and indices buffer and then generat
 all rects to be drawn. This approach is about 10 times faster on 1000 rects but for some reason it looses
 a lot of performance around 3000 rects. Up to it it does all drawing in about 0.6ms and somewhere above
 that number it goes to 30ms.
+
+### 14. Using GL_DYNAMIC_DRAW and glBufferSubData
+Based on [this article](http://voidptr.io/blog/2016/04/28/ldEngine-Part-1.html) which promised 100000 rects
+on 60 FPS I implement dynamic GL buffers. I managed to get up to 17000 color rects with about 1ms draw time
+but with 18000 time would jump to something like 50ms. With textured rect it is even worse. Drawing only
+10000 rects takes about 120ms. So it is a bit better then the last try but for some reason it is still bad.
+I am trying this on Intel Core i7-3520M 2.9GHz with NVidia NVS 5400M so I expected better results. I will
+probably have to satisfy with this for now and get to working on something else...

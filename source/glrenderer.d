@@ -13,6 +13,7 @@ void initViewport(int width, int height) {
     screenDim = V2(width, height);
     ctx.glViewport(0, 0, width, height);
     initDefaultShaders();
+    initDefaultGLObjects();
 }
 
 void clearColorBuffer(float r = 0f, float g = 0f, float b = 0f, float a = 0f) {
@@ -245,7 +246,7 @@ struct GLObject {
     GLuint vboid;
     GLuint eboid;
 
-    this(GLfloat[] positions, GLuint[] indices, GLVertexAttrib[] vertexAttribs) {
+    this(uint vertexNumber, uint indicesNumber, GLVertexAttrib[] vertexAttribs) {
         ctx.glGenVertexArrays(1, &id);
         ctx.glBindVertexArray(id);
 
@@ -253,10 +254,10 @@ struct GLObject {
         ctx.glGenBuffers(1, &eboid);
 
         ctx.glBindBuffer(GL_ARRAY_BUFFER, vboid);
-        ctx.glBufferData(GL_ARRAY_BUFFER, positions.length * typeof(positions[0]).sizeof, positions.ptr, GL_STATIC_DRAW);
+        ctx.glBufferData(GL_ARRAY_BUFFER, vertexNumber * GLfloat.sizeof, null, GL_DYNAMIC_DRAW);
 
         ctx.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eboid);
-        ctx.glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.length * GLuint.sizeof, indices.ptr, GL_STATIC_DRAW);
+        ctx.glBufferData(GL_ELEMENT_ARRAY_BUFFER, indicesNumber * GLuint.sizeof, null, GL_DYNAMIC_DRAW);
 
         foreach (GLuint index, vAttrib; vertexAttribs) {
             ctx.glVertexAttribPointer(index, vAttrib.components, vAttrib.type, GL_FALSE, vAttrib.stride, cast(void*)vAttrib.offset);
@@ -268,9 +269,14 @@ struct GLObject {
         ctx.glBindBuffer(GL_ARRAY_BUFFER, 0); 
     }
 
-    void draw(uint elements = 6) {
+    void draw(GLfloat[] positions, GLuint[] indices) {
+        ctx.glBindBuffer(GL_ARRAY_BUFFER, vboid);
+        ctx.glBufferSubData(GL_ARRAY_BUFFER, 0, positions.length * GLfloat.sizeof, positions.ptr);
+        ctx.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eboid);
+        ctx.glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, indices.length * GLuint.sizeof, indices.ptr);
+
         ctx.glBindVertexArray(id);
-        ctx.glDrawElements(GL_TRIANGLES, elements, GL_UNSIGNED_INT, null);
+        ctx.glDrawElements(GL_TRIANGLES, cast(GLsizei)indices.length, GL_UNSIGNED_INT, null);
     }
 
     void deleteObject() {
@@ -282,9 +288,25 @@ struct GLObject {
 
 enum DefGLObject {
     none,
-    rect,
+    colorRect,
+    textureRect,
 
     count,
+}
+
+private GLObject[DefGLObject.count] defaultGLObjects;
+
+private void initDefaultGLObjects() {
+    GLVertexAttrib[2] colorAttrs = [
+        {2, GL_FLOAT, 5 * GLfloat.sizeof, 0},
+        {3, GL_FLOAT, 5 * GLfloat.sizeof, 8}
+    ];
+    defaultGLObjects[DefGLObject.colorRect] = GLObject(commandBufferSize, indicesSize, colorAttrs);
+    GLVertexAttrib[2] textureAttrs = [
+        {2, GL_FLOAT, 4 * GLfloat.sizeof, 0},
+        {2, GL_FLOAT, 4 * GLfloat.sizeof, 8}
+    ];
+    defaultGLObjects[DefGLObject.textureRect] = GLObject(commandBufferSize, indicesSize, textureAttrs);
 }
 
 uint createTexture(int width, int height, const(uint)[] pixels) {
@@ -301,10 +323,11 @@ uint createTexture(int width, int height, const(uint)[] pixels) {
 }
 
 private enum commandBufferSize = 480000;
+private enum indicesSize = commandBufferSize / 16 * 6;
 struct RenderCommands {
     float[commandBufferSize] verts;
     uint usedVerts;
-    uint[commandBufferSize / 16 * 6] indices;
+    uint[indicesSize] indices;
     uint usedIndices;
     uint textureId;
 }
@@ -347,25 +370,16 @@ void flushDrawBuffers() {
     renderCommands.usedIndices = 0;
     if (!vc || !ic) return;
 
-    GLObject rects;
-    scope(exit) rects.deleteObject();
+    GLObject rects = void;
 
     if (renderCommands.textureId) {
-        GLVertexAttrib[2] attrs = [
-            {2, GL_FLOAT, 4 * GLfloat.sizeof, 0},
-            {2, GL_FLOAT, 4 * GLfloat.sizeof, 8}
-        ];
-        rects = GLObject(renderCommands.verts[0..vc], renderCommands.indices[0..ic], attrs);
+        rects = defaultGLObjects[DefGLObject.textureRect];
         defaultShaders[DefShader.textureRect].use();
         ctx.glBindTexture(GL_TEXTURE_2D, renderCommands.textureId);
     } else {
-        GLVertexAttrib[2] attrs = [
-            {2, GL_FLOAT, 5 * GLfloat.sizeof, 0},
-            {3, GL_FLOAT, 5 * GLfloat.sizeof, 8}
-        ];
-        rects = GLObject(renderCommands.verts[0..vc], renderCommands.indices[0..ic], attrs);
+        rects = defaultGLObjects[DefGLObject.colorRect];
         defaultShaders[DefShader.colorRect].use();
     }
-    rects.draw(ic);
+    rects.draw(renderCommands.verts[0..vc], renderCommands.indices[0..ic]);
     renderCommands.textureId = 0;
 }
