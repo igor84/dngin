@@ -322,7 +322,7 @@ uint createTexture(int width, int height, const(uint)[] pixels) {
     return texture;
 }
 
-private enum commandBufferSize = 480000;
+private enum commandBufferSize = 4800000;
 private enum indicesSize = commandBufferSize / 16 * 6;
 struct RenderCommands {
     float[commandBufferSize] verts;

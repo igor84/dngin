@@ -128,9 +128,9 @@ int myWinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int cmd
         auto startt = MonoTime.currTime;
         int x;
         int y;
-        enum w = 80;
-        enum h = 60;
-        foreach (i; 0..10000) {
+        enum w = 8;
+        enum h = 6;
+        foreach (i; 0..100000) {
             if (x < w) y = (y + h) % (windowHeight - h);
             x = (x + w) % (windowWidth - w);
 

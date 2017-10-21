@@ -53,6 +53,7 @@ private struct WinBmpFileHeader {
 
 enum LoadImageStatus {
     fileReadFailed = -1000,
+    allocationFailed,
     invalidFileSize,
     invalidFileSignature,
     invalidDimensions,
@@ -78,19 +79,19 @@ T[] asArrayOf(T, V)(const ref V[] inArray) {
     return (cast(T*)inArray.ptr)[0..(inArray.length * V.sizeof / T.sizeof)];
 }
 
-LoadImageResult loadBmpImage(const(char)[] path) {
-    import util.winfile;
+LoadImageResult loadBmpImage(string path) {
+    import std.stdio;
+    import std.file;
     import std.experimental.allocator.mmap_allocator;
-    import std.experimental.allocator.building_blocks.region;
 
-    auto tmpAllocator = Region!MmapAllocator(100 * 1024 * 1024);
-    FileReadResult file = ReadEntireFile(path, allocatorObject(&tmpAllocator));
+    auto fileSize = getSize(path);
+    if (fileSize <= WinBmpFileHeader.sizeof) return LoadImageResult(LoadImageStatus.invalidFileSize);
 
-    if (!file.status.isOk) return LoadImageResult(LoadImageStatus.fileReadFailed);
+    auto file = File(path);
+    WinBmpFileHeader[1] bmpHeader = void;
+    file.rawRead(bmpHeader);
 
-    if (file.content.length <= WinBmpFileHeader.sizeof) return LoadImageResult(LoadImageStatus.invalidFileSize);
-
-    auto header = cast(WinBmpFileHeader*)file.content.ptr;
+    auto header = &bmpHeader[0];
 
     // Validate file data
     if (header.fileType != 0x4d42) return LoadImageResult(LoadImageStatus.invalidFileSignature);
@@ -106,8 +107,14 @@ LoadImageResult loadBmpImage(const(char)[] path) {
     auto numpixels = header.width * header.height;
     auto numbytes = numpixels * (header.bitsPerPixel >> 3);
 
-    if (file.content.length < header.bitmapOffset + numbytes) return LoadImageResult(LoadImageStatus.invalidFileSize);
-    ubyte[] rawpixels = (cast(ubyte*)(file.content.ptr + header.bitmapOffset))[0..numbytes];
+    if (fileSize < header.bitmapOffset + numbytes) return LoadImageResult(LoadImageStatus.invalidFileSize);
+    file.seek(header.bitmapOffset);
+    // TODO: Have some reusable buffer for these kind of things so we don't have to call system alloc
+    ubyte[] rawpixels = cast(ubyte[])MmapAllocator.instance.allocate(numbytes);
+    if (rawpixels is null) return LoadImageResult(LoadImageStatus.allocationFailed);
+    scope(exit) MmapAllocator.instance.dispose(rawpixels);
+    auto returnedRawPixels = file.rawRead(rawpixels);
+    if (returnedRawPixels.length != rawpixels.length) return LoadImageResult(LoadImageStatus.invalidFileSize);
 
     ubyte[] apixels = cast(ubyte[])theAllocator.alignedAllocate(numpixels * uint.sizeof, 16);
     LoadImageResult result = {LoadImageStatus.ok, {header.width, header.height}};

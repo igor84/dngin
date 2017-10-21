@@ -183,3 +183,14 @@ but with 18000 time would jump to something like 50ms. With textured rect it is 
 10000 rects takes about 120ms. So it is a bit better then the last try but for some reason it is still bad.
 I am trying this on Intel Core i7-3520M 2.9GHz with NVidia NVS 5400M so I expected better results. I will
 probably have to satisfy with this for now and get to working on something else...
+
+### 15. Messing around
+Over a multiple of days I was further testing the rendering of 100000 rects and I managed to get it to
+60FPS by reducing the size of the rects and thus the overdraw. As much as I managed to gather overdraw is
+also responsible for sudden drop in performance after some point. To be more precise I think this is the
+reason: https://en.wikipedia.org/wiki/Fillrate.
+
+I was also started implemented my version of GC free file API but after more reading I found that std.file
+and std.stdio actually provide GC free functions so the only little thing bothering me is their requirement
+of C stdandard library but I also got pretty sure I won't be able to get away from it since many Phobos
+functions use it under the hood anyway.
